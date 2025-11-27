@@ -10,3 +10,7 @@ dependencies = [
     "numpy>=1.21.0",
     "openpyxl>=3.0.0"
 ]
+
+# --- ADD THIS SECTION BELOW ---
+[tool.setuptools]
+packages = ["isotools"]
