@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isotools"
+version = "0.1.0"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.21.0",
+    "openpyxl>=3.0.0"
+]
