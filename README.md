@@ -1,3 +1,5 @@
+[![Pylint](https://github.com/DamianPiuselli/IRMS/actions/workflows/pylint.yml/badge.svg)](https://github.com/DamianPiuselli/IRMS/actions/workflows/pylint.yml)
+
 # isotools
 
 **isotools** is a Python library designed for the automated processing, aggregation, and normalization of Stable Isotope Ratio Mass Spectrometry (IRMS) data. 
