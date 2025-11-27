@@ -1,0 +1,22 @@
+[MASTER]
+# CRITICAL: Tells PyLint to trust C-extensions like Numpy/Pandas.
+# Without this, you will get "E1101: Module 'pandas' has no member 'read_excel'"
+extension-pkg-allow-list=numpy, pandas
+
+[MESSAGES CONTROL]
+# Disable specific annoying warnings:
+# C0114: Missing module docstring (top of every file)
+# C0115: Missing class docstring
+# C0116: Missing function docstring
+# R0903: Too few public methods (Dataclasses often trigger this)
+disable=C0114, C0115, C0116, R0903
+
+[FORMAT]
+# Default is 100. For scientific code, 120 is often more comfortable.
+max-line-length=120
+
+[BASIC]
+# CRITICAL: Allow short variable names standard in science.
+# Defaults forbid names < 3 chars. We allow:
+# df (dataframe), x, y (coords), m (slope), n (count), id (identifier)
+good-names=i,j,k,ex,Run,_,df,x,y,n,m,b,id,ax,fig
