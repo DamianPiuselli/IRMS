@@ -43,29 +43,40 @@ class Reporter:
     ) -> pd.DataFrame:
         """
         Creates a polished report from an aggregated dataframe.
-        Prioritizes 'corrected_delta' if available, falls back to 'target_col'.
+        Strictly reports 'combined_uncertainty' if available.
+        Does NOT fallback to standard error (SEM).
         """
         df = summary_df.copy()
 
-        # Mapping logic
+        # Define Mapping: {Internal Column Name: Final Report Header}
         col_map = {}
 
-        # Primary Value
+        # 1. Primary Isotopic Value
         if "corrected_delta_mean" in df.columns:
-            col_map["corrected_delta_mean"] = f"Delta {target_col} (Air)"
-            col_map["corrected_delta_sem"] = "Error (1s)"
-        else:
-            col_map[f"{target_col}_mean"] = f"Delta {target_col} (Raw)"
-            col_map[f"{target_col}_sem"] = "Error (1s)"
+            # Calibrated Data
+            col_map["corrected_delta_mean"] = f"Delta {target_col.upper()} (Air)"
 
-        # Count
+            # 2. Uncertainty Logic
+            # ONLY report rigorous uncertainty. No fallbacks to precision (SEM).
+            if "combined_uncertainty" in df.columns:
+                col_map["combined_uncertainty"] = "Uncertainty (1s)"
+
+        else:
+            # Uncalibrated / Raw Data
+            col_map[f"{target_col}_mean"] = f"Delta {target_col.upper()} (Raw)"
+            # No uncertainty reported for raw data (as it is purely precision)
+
+        # 3. Sample Count (N)
         # We can take count from any column, usually the target
         count_col = f"{target_col}_count"
         if count_col in df.columns:
             col_map[count_col] = "N"
 
-        # Filter and Rename
+        # Filter: Only grab columns that actually exist
+        # Using direct iteration over col_map for Pythonic style
         available_cols = [c for c in col_map if c in df.columns]
+
+        # Create final dataframe
         report = df[available_cols].rename(columns=col_map)
 
         return report.round(self.decimals)
