@@ -14,26 +14,25 @@ def test_kragten_zero_uncertainty():
     std = ReferenceMaterial("STD_1", 10.0, 0.0)
 
     # 2. Setup Dataframe
-    # CRITICAL FIX: The DataFrame MUST contain the Standard's raw data
-    # so the strategy can 'fit' it (calculate the offset).
+    # We assume 'sample_name' is the index, or you set it as index before calibration
     data = {
         "mean": [10.0, 10.0],  # 10.0 for STD_1 (Raw), 10.0 for Sample (Raw)
         "sem": [0.0, 0.0],  # 0 uncertainty for both
     }
-    # Index must match the standard's name ("STD_1")
     df = pd.DataFrame(data, index=["STD_1", "Sample_X"])
 
     # 3. Run Calibration
     strategy = SinglePointStrategy()
     calib = Calibrator(strategy)
 
-    # This will now find "STD_1" in df to calculate the offset (10 - 10 = 0)
-    results = calib.calibrate(df, [std])
+    # The method now returns a DataFrame
+    results_df = calib.calibrate(df, [std])
 
-    # Find the result for the sample
-    sample_res = next(r for r in results if r.identifier == "Sample_X")
+    # 4. Assertions using DataFrame indexing
+    # We look up the row "Sample_X" and the column "combined_uncertainty"
+    actual_uncertainty = results_df.loc["Sample_X", "combined_uncertainty"]
 
-    assert sample_res.combined_uncertainty == pytest.approx(0.0)
+    assert actual_uncertainty == pytest.approx(0.0)
 
 
 def test_kragten_simple_propagation():
@@ -52,9 +51,12 @@ def test_kragten_simple_propagation():
 
     strategy = SinglePointStrategy()
     calib = Calibrator(strategy)
-    results = calib.calibrate(df, [std])
 
-    sample_res = next(r for r in results if r.identifier == "Sample_X")
+    # Returns DataFrame
+    results_df = calib.calibrate(df, [std])
+
+    # Access result for Sample_X
+    actual_uncertainty = results_df.loc["Sample_X", "combined_uncertainty"]
 
     # Expected: sqrt(3^2 + 4^2) = 5.0
-    assert sample_res.combined_uncertainty == pytest.approx(5.0, abs=1e-5)
+    assert actual_uncertainty == pytest.approx(5.0, abs=1e-5)

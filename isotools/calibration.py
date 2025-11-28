@@ -3,7 +3,7 @@
 from typing import List
 import numpy as np
 import pandas as pd
-from .schemas import ReferenceMaterial, CalculationResult
+from .schemas import ReferenceMaterial
 from .strategies import CalibrationStrategy
 
 
@@ -11,35 +11,45 @@ class Calibrator:
     def __init__(self, strategy: CalibrationStrategy):
         self.strategy = strategy
 
-    def calibrate(self, stats_df, standards: List[ReferenceMaterial]):
+    def calibrate(
+        self, stats_df: pd.DataFrame, standards: List[ReferenceMaterial]
+    ) -> pd.DataFrame:
+        """
+        Returns the input DataFrame with new columns: 'corrected_delta', 'combined_uncertainty', 'is_standard'.
+        """
+        # Work on a copy to avoid SettingWithCopy warnings on the original
+        df = stats_df.copy()
 
-        # 1. Train the Strategy (Calculate Slope/Offset/Etc)
-        self.strategy.fit(stats_df, standards)
+        # 1. Train
+        self.strategy.fit(df, standards)
 
-        results = []
+        # 2. Vectorized prediction (much faster than iterating rows for the nominal value)
+        # Note: Depending on your strategy logic, you might keep the loop for Kragten,
+        # but apply the results back to the DF columns.
 
-        # 2. Iterate Samples
-        for identifier, row in stats_df.iterrows():
+        corrected_list = []
+        uncertainty_list = []
+
+        # Iterate over the dataframe using iterrows (safe enough for this scale)
+        for _, row in df.iterrows():
             raw_val = row["mean"]
-            raw_sem = row["sem"]
-            if pd.isna(raw_sem):
-                raw_sem = 0.0
+            raw_sem = row.get("sem", 0.0)  # Handle missing SEM safely
 
-            # 3. Generic Kragten Propagation
             corr, unc = self._generic_kragten(raw_val, raw_sem)
+            corrected_list.append(corr)
+            uncertainty_list.append(unc)
 
-            # 4. Save
-            results.append(
-                CalculationResult(
-                    identifier=str(identifier),
-                    raw_mean=raw_val,
-                    corrected_delta=corr,
-                    combined_uncertainty=unc,
-                    calibrated_with="/".join([s.name for s in standards]),
-                )
-            )
+        # 3. Assign back to DataFrame
+        df["corrected_delta"] = corrected_list
+        df["combined_uncertainty"] = uncertainty_list
 
-        return results
+        # 4. Add metadata for convenience (e.g., mark which rows are standards)
+        std_names = {s.name: s.true_delta for s in standards}
+        df["true_value"] = df.index.map(std_names)  # Assuming index is sample_name
+        df["is_standard"] = df["true_value"].notna()
+        df["residual"] = df["corrected_delta"] - df["true_value"]
+
+        return df
 
     def _generic_kragten(self, val, unc):
         """

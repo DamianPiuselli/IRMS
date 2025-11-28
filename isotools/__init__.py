@@ -1,7 +1,7 @@
 """Define importable classes from the isotools package"""
 
 # Shortcuts for easy importing
-from .schemas import ReferenceMaterial, CalculationResult
+from .schemas import ReferenceMaterial
 from .standards import *
 from .strategies import TwoPointStrategy, CalibrationStrategy
 from .processors import NitrogenProcessor
