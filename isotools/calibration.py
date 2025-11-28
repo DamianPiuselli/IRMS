@@ -1,8 +1,8 @@
-"""Calibration module implementing various calibration strategies."""
+"""Calibration module for applying normalization strategies to raw data."""
 
-from typing import List
-import numpy as np
+from typing import List, Optional
 import pandas as pd
+import numpy as np
 from .schemas import ReferenceMaterial
 from .strategies import CalibrationStrategy
 
@@ -12,74 +12,42 @@ class Calibrator:
         self.strategy = strategy
 
     def calibrate(
-        self, stats_df: pd.DataFrame, standards: List[ReferenceMaterial]
+        self,
+        raw_df: pd.DataFrame,
+        standards: List[ReferenceMaterial],
+        target_col: str = "d15n",
     ) -> pd.DataFrame:
         """
-        Returns the input DataFrame with new columns: 'corrected_delta', 'combined_uncertainty', 'is_standard'.
+        Calibrates raw data row-by-row.
+
+        1. Aggregates the standard reference materials from the raw data.
+        2. Fits the CalibrationStrategy.
+        3. Predicts corrected values for every row in the dataframe.
+
+        Returns:
+            A new DataFrame with an added 'corrected_delta' column.
         """
-        # Work on a copy to avoid SettingWithCopy warnings on the original
-        df = stats_df.copy()
+        df = raw_df.copy()
 
-        # 1. Train
-        self.strategy.fit(df, standards)
+        # 1. Isolate and Aggregate Standards for Fitting
+        std_names = [s.name for s in standards]
+        std_subset = df[df["sample_name"].isin(std_names)]
 
-        # 2. Vectorized prediction (much faster than iterating rows for the nominal value)
-        # Note: Depending on your strategy logic, you might keep the loop for Kragten,
-        # but apply the results back to the DF columns.
+        if std_subset.empty:
+            raise ValueError("No standards found in the input DataFrame.")
 
-        corrected_list = []
-        uncertainty_list = []
+        # We need Mean/SEM of standards to fit the strategy
+        std_stats = std_subset.groupby("sample_name")[target_col].agg(["mean", "sem"])
 
-        # Iterate over the dataframe using iterrows (safe enough for this scale)
-        for _, row in df.iterrows():
-            raw_val = row["mean"]
-            raw_sem = row.get("sem", 0.0)  # Handle missing SEM safely
+        # Handle n=1 (NaN SEM) for standards
+        std_stats["sem"] = std_stats["sem"].fillna(0.0)
 
-            corr, unc = self._generic_kragten(raw_val, raw_sem)
-            corrected_list.append(corr)
-            uncertainty_list.append(unc)
+        # 2. Train the Strategy
+        self.strategy.fit(std_stats, standards)
 
-        # 3. Assign back to DataFrame
-        df["corrected_delta"] = corrected_list
-        df["combined_uncertainty"] = uncertainty_list
-
-        # 4. Add metadata for convenience (e.g., mark which rows are standards)
-        std_names = {s.name: s.true_delta for s in standards}
-        df["true_value"] = df.index.map(std_names)  # Assuming index is sample_name
-        df["is_standard"] = df["true_value"].notna()
-        df["residual"] = df["corrected_delta"] - df["true_value"]
+        # 3. Apply Correction to ALL Rows (Vectorized)
+        # Note: Strategy.predict works on floats, so we apply it element-wise or vectorized
+        # Using lambda for safety with complex strategies, though vectorization is preferred if possible
+        df["corrected_delta"] = df[target_col].apply(self.strategy.predict)
 
         return df
-
-    def _generic_kragten(self, val, unc):
-        """
-        This works for ANY strategy (1-point, 2-point, Multi-point).
-        It asks the strategy for parameters, then perturbs them blindly.
-        Obs:
-        unc should be the SEM value of the sample measurements.
-        """
-        # A. Nominal Calculation
-        y0 = self.strategy.predict(val)
-
-        # B. Get Strategy Parameters (e.g., The Standards data)
-        model_params = self.strategy.get_kragten_params()
-
-        sum_squares = 0.0
-
-        # C. Perturb Model Parameters (Slope/Intercept influencers)
-        # We assume model_params is list of (value, uncertainty)
-        for i, param in enumerate(model_params):
-            # Create list of nominal values
-            current_args = [p[0] for p in model_params]
-            # Add uncertainty to i-th parameter
-            current_args[i] += param[1]
-
-            # Predict using perturbed model
-            y_p = self.strategy.predict_perturbed(val, current_args)
-            sum_squares += (y_p - y0) ** 2
-
-        # D. Perturb the Sample Itself (The 'x' term)
-        y_samp_p = self.strategy.predict(val + unc)
-        sum_squares += (y_samp_p - y0) ** 2
-
-        return y0, np.sqrt(sum_squares)
