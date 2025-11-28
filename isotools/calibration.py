@@ -45,6 +45,8 @@ class Calibrator:
         """
         This works for ANY strategy (1-point, 2-point, Multi-point).
         It asks the strategy for parameters, then perturbs them blindly.
+        Obs:
+        unc should be the SEM value of the sample measurements.
         """
         # A. Nominal Calculation
         y0 = self.strategy.predict(val)

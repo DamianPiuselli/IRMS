@@ -1,72 +1,170 @@
+"""
+Data ingestion and preprocessing module.
+
+This module defines the `IsotopeProcessor` abstract base class and concrete implementations
+(e.g., `NitrogenProcessor`). It handles the critical "ETL" (Extract, Transform, Load) steps:
+1. Loading raw Excel files from Isodat.
+2. Standardizing column names (renaming to snake_case).
+3. Validating that essential columns exist.
+4. Filtering rows (e.g., specific peaks, excluding bad injections).
+5. Aggregating replicates into mean and standard error.
+"""
+
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Dict
 import pandas as pd
 
 
 class IsotopeProcessor(ABC):
     """
-    Abstract Base Class that defines the workflow for ANY isotope analysis.
-    It orchestrates: Loading -> Filtering -> Aggregating.
+    Abstract Base Class that orchestrates the data processing workflow.
+
+    Subclasses must define:
+    1. `target_column`: The final column name for the delta value (after renaming).
+    2. `isotope_mapping`: A dictionary mapping raw headers to standardized names
+       specific to that isotope.
+    3. `_filter_peaks`: Logic to select the correct peak rows.
     """
+
+    # --- STANDARD COLUMNS (Shared across all IRMS methods) ---
+    # These map the raw Isodat headers to clean internal names.
+    # Subclasses should NOT redefine these unless they need to override them.
+    DEFAULT_MAPPING = {
+        "Row": "row",
+        "Identifier 1": "sample_name",
+        "Identifier 2": "sample_id_2",
+        "Peak Nr": "peak_nr",
+        "Amount": "amount",
+        "Area All": "area_all",
+        "Comment": "comment",
+    }
 
     def __init__(self, exclude_rows: Optional[List[int]] = None):
         """
         Args:
-            exclude_rows: Optional list of Isodat 'Row' numbers to drop
-                          (e.g., due to injector failure).
+            exclude_rows: Optional list of 'Row' numbers (integers) to drop
+                          before processing (e.g., due to autosampler errors).
         """
         self.exclude_rows = exclude_rows if exclude_rows else []
 
     @property
     @abstractmethod
     def target_column(self) -> str:
-        """The specific column name for the delta value (e.g. 'd 15N/14N')."""
-        pass
+        """
+        The name of the column containing the primary isotopic value
+        (e.g., 'd15n' or 'd13c') *AFTER* renaming has occurred.
+        """
+
+    @property
+    @abstractmethod
+    def isotope_mapping(self) -> Dict[str, str]:
+        """
+        Returns a dictionary of column mappings specific to this isotope system.
+        Example: {'d 15N/14N': 'd15n', 'Ampl 28': 'amp_28'}
+
+        This will be merged with DEFAULT_MAPPING.
+        """
+
+    @property
+    def column_mapping(self) -> Dict[str, str]:
+        """
+        Combines the default mapping with the subclass-specific mapping.
+        """
+        mapping = self.DEFAULT_MAPPING.copy()
+        mapping.update(self.isotope_mapping)
+        return mapping
+
+    @property
+    def required_columns(self) -> List[str]:
+        """
+        List of columns that MUST be present in the dataframe after renaming.
+        Used for validation.
+        """
+        return ["sample_name", "peak_nr", "row", self.target_column]
 
     @abstractmethod
     def _filter_peaks(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Internal logic to select the correct peak (e.g. Peak 3 vs Peak 1).
-        Must be implemented by concrete classes.
+        Implementation-specific logic to select the correct rows.
+        Usually involves filtering by 'peak_nr'.
         """
-        pass
+
+    def _standardize_schema(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies column renaming and basic type cleanup.
+        """
+        # 1. NEW: Normalize whitespace in headers (collapse multi-spaces to single)
+        # This turns "Ampl  28" into "Ampl 28" automatically
+        df.columns = df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
+
+        # 2. Rename columns based on the full mapping (which uses single spaces)
+        df = df.rename(columns=self.column_mapping)
+
+        # 3. String cleanup
+        if "sample_name" in df.columns:
+            df["sample_name"] = df["sample_name"].astype(str).str.strip()
+
+        return df
+
+    def _validate_schema(self, df: pd.DataFrame):
+        """
+        Ensures the dataframe has the minimum necessary structure to proceed.
+        Raises ValueError if critical columns are missing.
+        """
+        missing = [col for col in self.required_columns if col not in df.columns]
+
+        if missing:
+            # We raise an error to fail fast rather than letting pandas
+            # throw a confusing KeyError later during aggregation.
+            raise ValueError(
+                f"Input file is missing required columns: {missing}.\n"
+                f"Did the Isodat export format change?\n"
+                f"Columns found: {list(df.columns)}"
+            )
 
     def load_data(
         self, filepath: str, sheet_name: Optional[str] = None
     ) -> pd.DataFrame:
         """
-        Orchestrates the loading process:
-        1. Reads the raw Excel file (scanning for headers).
-        2. Applies the 'exclude_rows' blacklist.
-        3. Applies isotope-specific peak filtering.
+        The main ingestion pipeline.
 
-        Returns:
-            A clean DataFrame containing all raw replicates.
+        Steps:
+        1. Read Excel file.
+        2. Rename columns (Standardize).
+        3. Validate schema.
+        4. Exclude specific rows (Blacklist).
+        5. Filter for relevant peaks.
         """
-        # 1. Use the dumb parser to get the file content
+        # 1. Read Raw
         df = pd.read_excel(filepath, sheet_name=sheet_name)
 
-        # 2. Apply General Row Exclusion (Injector failures, etc.)
-        if self.exclude_rows and "Row" in df.columns:
-            # We invert the boolean mask (~) to KEEP rows NOT in the exclude list
-            df = df[~df["Row"].isin(self.exclude_rows)]
+        # 2. Standardize Names
+        df = self._standardize_schema(df)
 
-        # 3. Apply Isotope Specific Logic (Peak selection)
+        # 3. Validate
+        self._validate_schema(df)
+
+        # 4. Exclude Rows (using standardized 'row' column)
+        if self.exclude_rows and "row" in df.columns:
+            df = df[~df["row"].isin(self.exclude_rows)]
+
+        # 5. Filter Peaks
         clean_df = self._filter_peaks(df)
 
         return clean_df
 
     def aggregate(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Collapses replicates into Mean and Standard Error (SEM).
-        Handles n=1 edge cases by setting SEM to 0.0.
+        Groups replicates by 'sample_name' and calculates Mean and Standard Error (SEM).
+
+        Returns:
+            DataFrame indexed by 'sample_name' with columns [mean, sem, count].
         """
-        # We group by the standard Isodat Identifier
-        stats = df.groupby("Identifier 1")[self.target_column].agg(
+        stats = df.groupby("sample_name")[self.target_column].agg(
             ["mean", "sem", "count"]
         )
 
-        # Safety Fix: n=1 results in NaN for sem. We fill with 0.
+        # Handle n=1 cases where sem is NaN (replace with 0.0)
         stats["sem"] = stats["sem"].fillna(0.0)
 
         return stats
@@ -75,8 +173,7 @@ class IsotopeProcessor(ABC):
         self, filepath: str, sheet_name: Optional[str] = None
     ) -> pd.DataFrame:
         """
-        High-level convenience method.
-        Goes straight from Excel File -> Aggregated Stats.
+        Convenience wrapper to go from File -> Aggregated Stats in one call.
         """
         raw_df = self.load_data(filepath, sheet_name=sheet_name)
         return self.aggregate(raw_df)
@@ -86,32 +183,41 @@ class IsotopeProcessor(ABC):
 
 
 class NitrogenProcessor(IsotopeProcessor):
-    """Processor for N2 analysis (d15N)."""
+    """
+    Processor for N2 analysis (d15N).
 
-    target_column = "d 15N/14N"
+    Standardizes N2-specific columns and filters for the sample gas peak.
+    """
+
+    # The internal standardized name we want to use for analysis
+    target_column = "d15n"
+
+    def __init__(self, exclude_rows: Optional[List[int]] = None, target_peak: int = 2):
+        """
+        Args:
+            exclude_rows: List of row numbers to drop.
+            target_peak: The Peak Nr of the sample gas (default=2).
+        """
+        super().__init__(exclude_rows)
+        self.target_peak = target_peak
+
+    @property
+    def isotope_mapping(self) -> Dict[str, str]:
+        """
+        Maps Isodat's N2 specific headers to our internal snake_case names.
+        """
+        return {
+            "d 15N/14N": "d15n",
+            "R 15N/14N": "r15n",
+            "Ampl 28": "amp_28",
+            "Ampl 29": "amp_29",
+            "Area 28": "area_28",
+            "Area 29": "area_29",
+        }
 
     def _filter_peaks(self, df: pd.DataFrame) -> pd.DataFrame:
-        # Nitrogen usually runs with Reference Gas on Peak 4
-        # and Sample Gas on Peak 3. We want Peak 3.
-        return df[df["Peak Nr"] == 2].copy()
-
-
-# TODO: Implement SulfurProcessor, CarbonProcessor, etc. as needed.
-# class SulfurProcessor(IsotopeProcessor):
-#     """Processor for SO2 analysis (d34S)."""
-
-#     target_column = 'd 34S/32S'
-
-#     def _filter_peaks(self, df: pd.DataFrame) -> pd.DataFrame:
-#         # Example logic: For SO2, maybe Peak 1 is the sample
-#         # (This depends on your specific method/config)
-#         return df[df['Peak Nr'] == 1].copy()
-
-# class CarbonProcessor(IsotopeProcessor):
-#     """Processor for CO2 analysis (d13C)."""
-
-#     target_column = 'd 13C/12C'
-
-#     def _filter_peaks(self, df: pd.DataFrame) -> pd.DataFrame:
-#         # CO2 logic usually matches N2 (Peak 3), but sometimes varies.
-#         return df[df['Peak Nr'] == 3].copy()
+        """
+        Filters the dataframe to keep only the configured sample peak.
+        """
+        # Note: We use "peak_nr" because columns have already been renamed by this point.
+        return df[df["peak_nr"] == self.target_peak].copy()
