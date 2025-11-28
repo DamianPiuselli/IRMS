@@ -19,7 +19,7 @@ def plot_diagnostics(raw_df, results, standards, processor: IsotopeProcessor):
     amp_col = processor.amplitude_column  # e.g., "amp_28" or "amp_44"
 
     # Generate label strings for the plot axes
-    delta_label = f"Raw $\delta${delta_col[1:].upper()}"  # d15n -> Raw d15N
+    delta_label = rf"Raw $\delta${delta_col[1:].upper()}"  # d15n -> Raw d15N
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 

@@ -50,6 +50,8 @@ class TwoPointStrategy(CalibrationStrategy):
 
     def __init__(self):
         self.params = []  # Will hold [raw1, raw2, true1, true2]
+        self.slope = 0.0
+        self.intercept = 0.0
 
     def fit(
         self,
@@ -85,9 +87,14 @@ class TwoPointStrategy(CalibrationStrategy):
     def get_kragten_params(self):
         return self.params
 
-    def predict_perturbed(self, raw_val: float, p: List[float]) -> float:
+    def predict_perturbed(self, raw_val: float, perturbed_params: List[float]) -> float:
         # p maps to the order in self.params: [r1, r2, t1, t2]
-        r1, r2, t1, t2 = p[0], p[1], p[2], p[3]
+        r1, r2, t1, t2 = (
+            perturbed_params[0],
+            perturbed_params[1],
+            perturbed_params[2],
+            perturbed_params[3],
+        )
 
         # Re-calculate slope/intercept based on perturbed values
         m = (t1 - t2) / (r1 - r2)
@@ -100,6 +107,11 @@ class SinglePointStrategy(CalibrationStrategy):
     Implements 1-point offset normalization (Shift only).
     Formula: True = Raw + (True_Std - Raw_Std)
     """
+
+    def __init__(self):
+        self.params = []
+        # Initialize attribute
+        self.offset = 0.0
 
     def fit(
         self,
@@ -123,7 +135,7 @@ class SinglePointStrategy(CalibrationStrategy):
     def get_kragten_params(self):
         return self.params
 
-    def predict_perturbed(self, raw_val: float, p: List[float]) -> float:
+    def predict_perturbed(self, raw_val: float, perturbed_params: List[float]) -> float:
         # p: [r1, t1]
-        offset = p[1] - p[0]
+        offset = perturbed_params[1] - perturbed_params[0]
         return raw_val + offset

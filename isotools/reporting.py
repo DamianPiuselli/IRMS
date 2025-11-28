@@ -65,7 +65,7 @@ class Reporter:
             col_map[count_col] = "N"
 
         # Filter and Rename
-        available_cols = [c for c in col_map.keys() if c in df.columns]
+        available_cols = [c for c in col_map if c in df.columns]
         report = df[available_cols].rename(columns=col_map)
 
         return report.round(self.decimals)

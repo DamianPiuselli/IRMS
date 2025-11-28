@@ -27,11 +27,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
-          # Optional: install bottleneck explicitly if you want to silence that warning on CI
-          pip install bottleneck 
           # Installs your 'isotools' library + dependencies (pandas, etc.) from pyproject.toml
-          pip install -e .
+          pip install -e ".[dev]"
 
       - name: Run tests
         run: |

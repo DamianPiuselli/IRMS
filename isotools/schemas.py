@@ -1,7 +1,6 @@
 """Data schemas for isotopic processing results and reference materials."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
