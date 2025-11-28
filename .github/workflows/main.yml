@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   test:
@@ -14,25 +14,25 @@ jobs:
       matrix:
         # Testing across multiple versions ensures compatibility
         # Included 3.11 since that is your local environment
-        python-version: ["3.9", "3.10", "3.11"]
+        python-version: ["3.10", "3.11"]
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pytest
-        # Optional: install bottleneck explicitly if you want to silence that warning on CI
-        pip install bottleneck 
-        # Installs your 'isotools' library + dependencies (pandas, etc.) from pyproject.toml
-        pip install -e .
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          # Optional: install bottleneck explicitly if you want to silence that warning on CI
+          pip install bottleneck 
+          # Installs your 'isotools' library + dependencies (pandas, etc.) from pyproject.toml
+          pip install -e .
 
-    - name: Run tests
-      run: |
-        pytest
+      - name: Run tests
+        run: |
+          pytest
