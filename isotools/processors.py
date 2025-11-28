@@ -57,6 +57,14 @@ class IsotopeProcessor(ABC):
 
     @property
     @abstractmethod
+    def amplitude_column(self) -> str:
+        """
+        The specific column name for the major beam amplitude/intensity.
+        Used for linearity checks (e.g., 'amp_28' for N2, 'amp_44' for CO2).
+        """
+
+    @property
+    @abstractmethod
     def isotope_mapping(self) -> Dict[str, str]:
         """
         Returns a dictionary of column mappings specific to this isotope system.
@@ -191,6 +199,7 @@ class NitrogenProcessor(IsotopeProcessor):
 
     # The internal standardized name we want to use for analysis
     target_column = "d15n"
+    amplitude_column = "amp_28"
 
     def __init__(self, exclude_rows: Optional[List[int]] = None, target_peak: int = 2):
         """
