@@ -1,8 +1,7 @@
 """Calibration module for applying normalization strategies to raw data."""
 
-from typing import List, Optional
+from typing import List
 import pandas as pd
-import numpy as np
 from .schemas import ReferenceMaterial
 from .strategies import CalibrationStrategy
 
