@@ -39,9 +39,8 @@ class Batch:
 
     @property
     def data_view(self) -> pd.DataFrame:
-        """Returns a quick summary of the raw data for inspection."""
-        # Simple aggregation to show user what standards/samples are present
-        return self.replicates.groupby("sample_name").size().to_frame("n_injections")
+        """Returns the full raw data for preliminary analysis and inspection."""
+        return self.replicates
 
     # --- Data Cleaning ---
 

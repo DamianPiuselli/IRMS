@@ -136,6 +136,26 @@ def test_batch_precision_override(mock_read):
 
 
 @patch("isotools.utils.readers.pd.read_excel")
+def test_batch_data_view(mock_read, mock_isodat_file):
+    """Test that data_view returns the full replicates DataFrame."""
+    mock_read.return_value = mock_isodat_file
+    batch = Batch("dummy.xls", config=Nitrogen)
+    
+    view = batch.data_view
+    
+    # Check that it returns a DataFrame
+    assert isinstance(view, pd.DataFrame)
+    
+    # Check that it has the same number of rows as input
+    assert len(view) == 5
+    
+    # Check that essential columns are present
+    assert "sample_name" in view.columns
+    assert "row" in view.columns
+    assert "d15n" in view.columns
+    assert "excluded" in view.columns
+
+@patch("isotools.utils.readers.pd.read_excel")
 def test_batch_save_report(mock_read, mock_isodat_file, tmp_path):
     """Test that save_report creates an Excel file."""
     mock_read.return_value = mock_isodat_file
