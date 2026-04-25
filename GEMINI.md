@@ -24,8 +24,8 @@
 
 ### Development Setup
 ```bash
-# Clone the repository and install in editable mode with dev dependencies
-pip install -e ".[dev]"
+# Clone the repository and install dev dependencies
+pip install -r requirements-dev.txt
 ```
 
 ### Running Tests

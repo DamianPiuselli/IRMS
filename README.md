@@ -16,45 +16,15 @@ It moves away from procedural scripts to a **Batch-Centric** workflow, where dat
 
 ## Installation
 
-This package is designed to be installed in editable mode for local development.
-
-## Quick Start
-
-see `workflow.ipynb` for a basic usage example.
-
-```python
-import isotools
-from isotools import Batch, Nitrogen, TwoPointLinear
-from isotools.standards import USGS32, USGS34, USGS35
-
-# 1. Initialize the Batch
-# Reads the Isodat file and applies N2-specific cleaning rules (Peak 2 only, column renaming)
-run = Batch("DATA/nitrate_2025.xls", config=Nitrogen)
-
-# 2. Inspect Data (Optional)
-# Check what samples were found to decide on exclusions
-print(run.data_view)
-
-# 3. Clean Data
-# Exclude bad injections by Row ID (e.g., Row 26 had a pressure drop)
-run.exclude_rows([26])
-
-# 4. Configure Standards
-# Set Anchors: Used to build the calibration curve
-run.set_anchors(["USGS32", "USGS34"]) 
-
-# Set Controls: Used for QC (Trueness check), not fitting
-run.set_controls(["USGS35"])
-
-# 5. Process
-# Aggregates replicates, fits the curve, and propagates uncertainty
-run.process(strategy=TwoPointLinear())
-
-# 6. Get Results
-print(run.report)  # Final table with corrected values and combined uncertainty
-print(run.qaqc)    # Trueness report for Control standards
-```
+Clone the repository and install the dependencies:
 
 ```bash
-cd /path/to/isotools_folder
-pip install -e .
+git clone https://github.com/DamianPiuselli/IRMS.git
+cd IRMS
+pip install -r requirements.txt
+```
+
+For development (testing and linting), install:
+```bash
+pip install -r requirements-dev.txt
+```
