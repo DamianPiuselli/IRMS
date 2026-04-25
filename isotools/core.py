@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Iterable
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -83,6 +83,18 @@ class Batch:
             resolved[std.name] = std
         return resolved
 
+    def _get_canonical_name(
+        self, raw_name: str, registry: Dict[str, ReferenceMaterial]
+    ) -> Optional[str]:
+        """
+        Maps a potentially messy raw sample name to a canonical standard name 
+        if it matches any aliases in the provided registry.
+        """
+        for std in registry.values():
+            if std.matches(raw_name):
+                return std.name
+        return None
+
     # --- Drift Analysis ---
 
     def check_drift(self, use_working: bool = False) -> pd.DataFrame:
@@ -101,13 +113,9 @@ class Batch:
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
         
         # Add canonical name for grouping
-        def map_to_canonical(raw_name):
-            for std in self.drift_monitors.values():
-                if std.matches(raw_name):
-                    return std.name
-            return None
-
-        valid_data["canonical_name"] = valid_data["sample_name"].apply(map_to_canonical)
+        valid_data["canonical_name"] = valid_data["sample_name"].apply(
+            lambda x: self._get_canonical_name(x, self.drift_monitors)
+        )
         drift_data = valid_data[valid_data["canonical_name"].notna()]
 
         col_to_use = "working_value" if use_working else self.config.target_column
@@ -150,13 +158,9 @@ class Batch:
 
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
         
-        def map_to_canonical(raw_name):
-            for std in self.drift_monitors.values():
-                if std.matches(raw_name):
-                    return std.name
-            return None
-
-        valid_data["canonical_name"] = valid_data["sample_name"].apply(map_to_canonical)
+        valid_data["canonical_name"] = valid_data["sample_name"].apply(
+            lambda x: self._get_canonical_name(x, self.drift_monitors)
+        )
         drift_data = valid_data[valid_data["canonical_name"].notna()]
 
         if drift_data.empty:
@@ -197,17 +201,14 @@ class Batch:
         # Always check drift on raw data to get the absolute slope
         stats = self.check_drift(use_working=False)
         
+        # Check if monitor_name is canonical or raw
         if monitor_name not in stats.index:
-            canonical_name = None
-            for std in self.drift_monitors.values():
-                if std.matches(monitor_name):
-                    canonical_name = std.name
-                    break
+            monitor_name = self._get_canonical_name(monitor_name, self.drift_monitors)
             
-            if canonical_name in stats.index:
-                monitor_name = canonical_name
-            else:
-                raise ValueError(f"Monitor standard '{monitor_name}' not found or has insufficient data for drift analysis.")
+            if monitor_name not in stats.index:
+                raise ValueError(
+                    f"Monitor standard '{monitor_name}' not found or has insufficient data for drift analysis."
+                )
 
         slope = stats.loc[monitor_name, "Slope"]
         
@@ -228,14 +229,15 @@ class Batch:
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
         
         # 1. Filter for Anchors and add True Values
-        def get_true_val(raw_name):
-            for std in self.anchors.values():
-                if std.matches(raw_name):
-                    return std.d_true
-            return None
+        valid_data["canonical_name"] = valid_data["sample_name"].apply(
+            lambda x: self._get_canonical_name(x, self.anchors)
+        )
+        anchor_data = valid_data[valid_data["canonical_name"].notna()]
+        
+        def get_true_val(canonical_name):
+            return self.anchors[canonical_name].d_true
 
-        valid_data["d_true"] = valid_data["sample_name"].apply(get_true_val)
-        anchor_data = valid_data[valid_data["d_true"].notna()]
+        anchor_data["d_true"] = anchor_data["canonical_name"].apply(get_true_val)
 
         if anchor_data.empty:
             raise ValueError("No anchors found in data to plot.")
@@ -248,7 +250,7 @@ class Batch:
             data=anchor_data,
             x="d_true",
             y="working_value",
-            hue="sample_name",
+            hue="canonical_name",
             ax=ax,
             s=60,
             alpha=0.8,
@@ -298,25 +300,19 @@ class Batch:
         valid_data = self.replicates[~self.replicates["excluded"]]
 
         # B. Prepare Anchor Stats for Fitting
-        anchor_rows = valid_data[
-            valid_data["sample_name"].apply(
-                lambda x: any(std.matches(x) for std in self.anchors.values())
-            )
-        ]
+        valid_data = valid_data.copy()
+        valid_data["canonical_name"] = valid_data["sample_name"].apply(
+            lambda x: self._get_canonical_name(x, self.anchors)
+        )
+        anchor_rows = valid_data[valid_data["canonical_name"].notna()]
 
         if anchor_rows.empty:
             raise ValueError("No rows matched the provided Anchor Standards.")
 
-        def map_to_canonical(raw_name):
-            for std in self.anchors.values():
-                if std.matches(raw_name):
-                    return std.name
-            return None
-
         # Use working_value for fitting
-        anchor_stats = anchor_rows.groupby(
-            anchor_rows["sample_name"].apply(map_to_canonical)
-        )["working_value"].agg(["mean", "sem", "count"])
+        anchor_stats = anchor_rows.groupby("canonical_name")["working_value"].agg(
+            ["mean", "sem", "count"]
+        )
 
         # Optional Precision Override: use sigma / sqrt(n)
         if use_method_precision and self.config.method_precision > 0:
@@ -379,18 +375,19 @@ class Batch:
         # Filter summary for rows that match our Controls
         qc_rows = []
         for sample_name in self._summary.index:
-            for _, std_obj in self.controls.items():
-                if std_obj.matches(sample_name):
-                    # Found a QC sample
-                    row = self._summary.loc[sample_name].copy()
-                    row["True_Value"] = std_obj.d_true
-                    row["Bias"] = (
-                        row[f"corrected_{self.config.target_column}"] - std_obj.d_true
-                    )
-                    row["Within_Unc"] = abs(row["Bias"]) < (
-                        2 * row["combined_uncertainty"]
-                    )  # Simple check
-                    qc_rows.append(row)
+            canonical_name = self._get_canonical_name(sample_name, self.controls)
+            if canonical_name:
+                std_obj = self.controls[canonical_name]
+                # Found a QC sample
+                row = self._summary.loc[sample_name].copy()
+                row["True_Value"] = std_obj.d_true
+                row["Bias"] = (
+                    row[f"corrected_{self.config.target_column}"] - std_obj.d_true
+                )
+                row["Within_Unc"] = abs(row["Bias"]) < (
+                    2 * row["combined_uncertainty"]
+                )  # Simple check
+                qc_rows.append(row)
 
         if not qc_rows:
             return pd.DataFrame()

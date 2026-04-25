@@ -4,7 +4,7 @@
 - [x] **Task 1: Non-Destructive Corrections**
     - Refactor `Batch` to store corrections in a separate column instead of overwriting raw data.
     - Update `apply_drift_correction` and `process` to use this new column.
-- [ ] **Task 2: Centralize Name Resolution**
+- [x] **Task 2: Centralize Name Resolution**
     - Implement `Batch._get_canonical_name(raw_name)` to unify standard identification across `check_drift`, `plot_drift`, `process`, and `plot_calibration`.
 - [ ] **Task 3: Ingestion Validation**
     - Enhance `IsodatReader` to validate that all mapped columns exist in the raw file.
