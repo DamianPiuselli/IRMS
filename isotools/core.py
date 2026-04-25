@@ -26,6 +26,9 @@ class Batch:
         reader = IsodatReader(config)
         self.replicates = reader.read(filepath, sheet_name=sheet_name)
         self.replicates["excluded"] = False
+        
+        # Initialize working_value as a copy of the raw target
+        self.replicates["working_value"] = self.replicates[config.target_column].copy()
 
         # 2. State Containers
         self.anchors: Dict[str, ReferenceMaterial] = {}  # Used for calibration
@@ -82,10 +85,15 @@ class Batch:
 
     # --- Drift Analysis ---
 
-    def check_drift(self) -> pd.DataFrame:
+    def check_drift(self, use_working: bool = False) -> pd.DataFrame:
         """
         Calculates linear regression (Target vs Row) for all drift monitors.
         Returns a summary of slopes, p-values, and 95% Confidence Intervals.
+        
+        Args:
+            use_working: If True, uses the current 'working_value' (which might be 
+                        already drift-corrected). If False (default), uses the 
+                        original raw target column.
         """
         if not self.drift_monitors:
             raise ValueError("No drift monitors set. Use set_drift_monitors() first.")
@@ -102,13 +110,15 @@ class Batch:
         valid_data["canonical_name"] = valid_data["sample_name"].apply(map_to_canonical)
         drift_data = valid_data[valid_data["canonical_name"].notna()]
 
+        col_to_use = "working_value" if use_working else self.config.target_column
+
         results = []
         for name, group in drift_data.groupby("canonical_name"):
             if len(group) < 3:
                 continue
             
             x = group["row"]
-            y = group[self.config.target_column]
+            y = group[col_to_use]
             
             slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
             
@@ -126,9 +136,12 @@ class Batch:
                 "n": len(x)
             })
 
+        if not results:
+            return pd.DataFrame(columns=["Slope", "CI_95", "p_value", "R_squared", "n"])
+
         return pd.DataFrame(results).set_index("Standard")
 
-    def plot_drift(self, ax: Optional[plt.Axes] = None):
+    def plot_drift(self, ax: Optional[plt.Axes] = None, use_working: bool = False):
         """
         Plots target column vs row for all drift monitors with trendlines.
         """
@@ -152,10 +165,12 @@ class Batch:
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 6))
 
+        col_to_use = "working_value" if use_working else self.config.target_column
+
         sns.regplot(
             data=drift_data,
             x="row",
-            y=self.config.target_column,
+            y=col_to_use,
             scatter_kws={"alpha": 0.6},
             ax=ax
         )
@@ -163,10 +178,10 @@ class Batch:
         # Add labels and formatting
         ax.set_title(f"Drift Analysis ({self.config.name})")
         ax.set_xlabel("Injection (Row)")
-        ax.set_ylabel(f"Raw {self.config.target_column}")
+        ax.set_ylabel(f"{'Working' if use_working else 'Raw'} {self.config.target_column}")
         
         # Calculate stats for annotation
-        stats_df = self.check_drift()
+        stats_df = self.check_drift(use_working=use_working)
         for i, (name, row) in enumerate(stats_df.iterrows()):
             txt = f"{name}: Slope={row['Slope']:.4f} ± {row['CI_95']:.4f} (p={row['p_value']:.3f})"
             ax.annotate(txt, xy=(0.05, 0.95 - i*0.05), xycoords='axes fraction', fontsize=10)
@@ -175,15 +190,14 @@ class Batch:
 
     def apply_drift_correction(self, monitor_name: str):
         """
-        Applies a linear drift correction to the raw target data based on the specified monitor.
-        Formula: y_new = y_old - (slope * row)
+        Applies a linear drift correction to the working data based on the specified monitor.
+        Always calculates the slope from RAW data to ensure consistency.
+        Formula: working_value = raw_value - (slope * row)
         """
-        stats = self.check_drift()
+        # Always check drift on raw data to get the absolute slope
+        stats = self.check_drift(use_working=False)
         
-        # We need to find the canonical name for the monitor_name provided
-        # Or check if it exists in the stats index directly
         if monitor_name not in stats.index:
-            # Maybe it's a raw name? Let's check drift_monitors
             canonical_name = None
             for std in self.drift_monitors.values():
                 if std.matches(monitor_name):
@@ -197,8 +211,8 @@ class Batch:
 
         slope = stats.loc[monitor_name, "Slope"]
         
-        # Apply correction to all rows
-        self.replicates[self.config.target_column] -= slope * self.replicates["row"]
+        # Apply correction to working_value, starting from raw target
+        self.replicates["working_value"] = self.replicates[self.config.target_column] - (slope * self.replicates["row"])
         
         # Invalidate summary cache
         self._summary = None
@@ -233,7 +247,7 @@ class Batch:
         sns.scatterplot(
             data=anchor_data,
             x="d_true",
-            y=self.config.target_column,
+            y="working_value",
             hue="sample_name",
             ax=ax,
             s=60,
@@ -262,7 +276,7 @@ class Batch:
 
         ax.set_title(f"Calibration Curve: {self.config.name}")
         ax.set_xlabel("Reference Value (True)")
-        ax.set_ylabel(f"Measured {self.config.target_column}")
+        ax.set_ylabel(f"Measured {self.config.target_column} (Drift-Corrected)")
         ax.legend()
         ax.grid(True, linestyle=':', alpha=0.6)
 
@@ -273,7 +287,7 @@ class Batch:
     def process(self, strategy: CalibrationStrategy, use_method_precision: bool = False):
         """
         The Main Pipeline:
-        1. Fit Strategy (using Anchors)
+        1. Fit Strategy (using Anchors from working_value)
         2. Correct Replicates (Row-by-Row)
         3. Aggregate to Summary (Sample-Level)
         4. Propagate Uncertainty (Kragten)
@@ -284,8 +298,6 @@ class Batch:
         valid_data = self.replicates[~self.replicates["excluded"]]
 
         # B. Prepare Anchor Stats for Fitting
-        # We need the Raw Mean/SEM of the standards identified as anchors
-        # match_func logic: Find rows where sample_name matches an anchor
         anchor_rows = valid_data[
             valid_data["sample_name"].apply(
                 lambda x: any(std.matches(x) for std in self.anchors.values())
@@ -295,17 +307,16 @@ class Batch:
         if anchor_rows.empty:
             raise ValueError("No rows matched the provided Anchor Standards.")
 
-        # Group by the *canonical* standard name, not the messy raw name
-        # We map the raw name to the canonical name first
         def map_to_canonical(raw_name):
             for std in self.anchors.values():
                 if std.matches(raw_name):
                     return std.name
             return None
 
+        # Use working_value for fitting
         anchor_stats = anchor_rows.groupby(
             anchor_rows["sample_name"].apply(map_to_canonical)
-        )[self.config.target_column].agg(["mean", "sem", "count"])
+        )["working_value"].agg(["mean", "sem", "count"])
 
         # Optional Precision Override: use sigma / sqrt(n)
         if use_method_precision and self.config.method_precision > 0:
@@ -317,13 +328,18 @@ class Batch:
         strategy.fit(anchor_stats, self.anchors)
 
         # D. Apply to Replicates (Vectorized)
-        # This updates self.replicates with a new 'corrected_d15n' column
-        self.replicates = strategy.apply(self.replicates, self.config.target_column)
+        # Always use working_value as input
+        self.replicates = strategy.apply(self.replicates, "working_value")
+        
+        # Rename the output column to match the expected client-facing name
+        self.replicates = self.replicates.rename(
+            columns={f"corrected_working_value": f"corrected_{self.config.target_column}"}
+        )
 
         # E. Aggregate to Summary (Sample Level)
-        # We group by the raw sample name here
-        self._summary = valid_data.groupby("sample_name")[
-            self.config.target_column
+        # We must use the newly created corrected column for the final mean
+        self._summary = self.replicates[~self.replicates["excluded"]].groupby("sample_name")[
+            "working_value"
         ].agg(["mean", "sem", "count"])
 
         if use_method_precision and self.config.method_precision > 0:
@@ -332,7 +348,8 @@ class Batch:
             )
 
         # F. Propagate Uncertainty (Sample Level)
-        # This adds 'combined_uncertainty' and 'corrected_mean' to _summary
+        # strategy.propagate will add 'combined_uncertainty' and its own 'corrected_{target_col}'
+        # but we need to tell it that the input mean is 'working_value'
         self._summary = strategy.propagate(self._summary, self.config.target_column)
 
     # --- Reporting ---

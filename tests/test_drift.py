@@ -75,9 +75,13 @@ def test_apply_drift_correction(mock_read, drift_data):
         # Apply correction
         batch.apply_drift_correction("Buenos Aires")
         
-        # Verify drift is removed
-        stats_after = batch.check_drift()
+        # Verify drift is removed in working data
+        stats_after = batch.check_drift(use_working=True)
         assert stats_after.loc["Buenos Aires", "Slope"] == pytest.approx(0.0, abs=0.0001)
+        
+        # Verify raw drift is still there (non-destructive)
+        stats_raw = batch.check_drift(use_working=False)
+        assert stats_raw.loc["Buenos Aires", "Slope"] == pytest.approx(0.2, abs=0.01)
 
 def test_drift_no_monitors():
     with patch("isotools.utils.readers.pd.read_excel") as mock_read:
