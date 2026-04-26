@@ -85,7 +85,7 @@ run.save_report("Water_18O_Final_Report.xlsx")
 
 ### Outlier Diagnostics
 When a `Batch` is initialized or processed, it automatically runs diagnostics. Flags are stored in the `.alerts` property:
-- **Range Check:** Values outside environmental bounds (e.g., $<-60$ or $>20$ for $\delta^{18}$O).
+- **Range Check:** Values outside environmental bounds (e.g., $<-60$ or $>20$ for $\delta^{18}O$).
 - **Precision Check:** Sample standard deviation > 3x method precision.
 - **Amplitude Check:** Signal intensity far from the run median.
 
