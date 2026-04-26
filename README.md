@@ -31,7 +31,7 @@ For development (testing and linting), install:
 pip install -r requirements-dev.txt
 ```
 
-## Tutorial: Water $\delta^{18}$O Processing
+## Tutorial: Water $\delta^{18}O$ Processing
 
 This example demonstrates how to process a run of water samples for $\delta^{18}$O using a two-point linear normalization.
 
