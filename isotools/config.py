@@ -102,7 +102,7 @@ Water_H = SystemConfig(
     filter_func=_filter_water_h_peaks,
     method_precision=1.4,
     amplitude_column="amp_2",
-    absolute_range=(-400.0, 50.0),
+    absolute_range=(-400.0, 50.0), #rango maximo en muestras naturales
 )
 
 Water_O = SystemConfig(
