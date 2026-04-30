@@ -64,6 +64,7 @@ class TwoPointLinear(CalibrationStrategy):
         # m = (r2 - r1) / (t2 - t1)
         self.slope = (self.r2 - self.r1) / (self.t2 - self.t1)
         self.intercept = self.r1 - (self.slope * self.t1)
+        self.r_squared = 1.0
 
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         """
@@ -170,8 +171,12 @@ class MultiPointLinear(CalibrationStrategy):
             raise ValueError("MultiPointLinear requires at least 2 anchor standards.")
 
         # OLS fit (Instrument Fit: Raw = m * True + b)
-        # Note: polyfit(x, y) -> x=y_true (independent), y=x_raw (dependent)
-        self.slope, self.intercept = np.polyfit(y_true, x_raw, 1)
+        # We use scipy.stats.linregress to get R2 as well
+        from scipy import stats as sp_stats
+        slope, intercept, r_value, _, _ = sp_stats.linregress(y_true, x_raw)
+        self.slope = slope
+        self.intercept = intercept
+        self.r_squared = r_value**2
 
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         """

@@ -17,6 +17,7 @@ class CalibrationStrategy(ABC):
     def __init__(self):
         self.slope = 1.0
         self.intercept = 0.0
+        self.r_squared = 0.0
 
     @abstractmethod
     def fit(self, anchor_stats: pd.DataFrame, refs: Dict[str, ReferenceMaterial]):
