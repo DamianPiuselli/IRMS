@@ -29,12 +29,12 @@ def _create_drift_plot(batch) -> str:
     unknowns = valid_data[valid_data["canonical_name"].isna()]
     if not unknowns.empty:
         fig.add_trace(go.Scatter(
-            x=unknowns["row"],
-            y=unknowns[batch.config.target_column],
+            x=unknowns["row"].tolist(),
+            y=unknowns[batch.config.target_column].tolist(),
             mode='markers',
             name='Samples/Others',
             marker=dict(color='lightgrey', size=8, opacity=0.5),
-            text=unknowns["sample_name"],
+            text=unknowns["sample_name"].tolist(),
             hovertemplate="<b>%{text}</b><br>Row: %{x}<br>Raw: %{y:.3f}<extra></extra>"
         ))
 
@@ -42,12 +42,12 @@ def _create_drift_plot(batch) -> str:
     monitors = valid_data[valid_data["canonical_name"].notna()]
     for name, group in monitors.groupby("canonical_name"):
         fig.add_trace(go.Scatter(
-            x=group["row"],
-            y=group[batch.config.target_column],
+            x=group["row"].tolist(),
+            y=group[batch.config.target_column].tolist(),
             mode='markers',
             name=f"Monitor: {name}",
             marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')),
-            text=group["sample_name"],
+            text=group["sample_name"].tolist(),
             hovertemplate="<b>%{text}</b><br>Row: %{x}<br>Raw: %{y:.3f}<extra></extra>"
         ))
 
@@ -60,13 +60,14 @@ def _create_drift_plot(batch) -> str:
                 continue
             
             x_min, x_max = monitor_rows.min(), monitor_rows.max()
-            # Calculate intercept for this monitor (it's not in stats_df yet)
             group = monitors[monitors["canonical_name"] == name]
             m = stats["Slope"]
+            # Re-calculate intercept locally for plotting
             b = group[batch.config.target_column].mean() - m * group["row"].mean()
             
-            x_line = np.array([x_min, x_max])
-            y_line = m * x_line + b
+            # Use Python lists for x and y to avoid binary encoding
+            x_line = [float(x_min), float(x_max)]
+            y_line = [float(m * x_min + b), float(m * x_max + b)]
             
             fig.add_trace(go.Scatter(
                 x=x_line,
@@ -92,15 +93,17 @@ def _create_drift_plot(batch) -> str:
             )
 
     fig.update_layout(
-        title=f"Drift Analysis (Raw {batch.config.target_column} vs Row)",
+        title=f"Drift Analysis (Raw {batch.config.name} vs Row)",
         xaxis_title="Injection (Row)",
         yaxis_title=f"Raw {batch.config.target_column}",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=50, r=50, t=100, b=50),
-        hovermode="closest"
+        hovermode="closest",
+        plot_bgcolor="white"
     )
 
-    return pio.to_html(fig, full_html=False, include_plotlyjs=False)
+    # CRITICAL: Do NOT use binary encoding for data arrays
+    return pio.to_html(fig, full_html=False, include_plotlyjs=False, post_script=None)
 
 def _create_calibration_plot(batch) -> str:
     """Generates an interactive Plotly calibration plot."""
@@ -123,23 +126,23 @@ def _create_calibration_plot(batch) -> str:
     # 1. Scatter Individual Replicates
     for name, group in anchor_data.groupby("canonical_name"):
         fig.add_trace(go.Scatter(
-            x=group["d_true"],
-            y=group["working_value"],
+            x=group["d_true"].tolist(),
+            y=group["working_value"].tolist(),
             mode='markers',
             name=name,
             marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')),
-            text=group["sample_name"],
+            text=group["sample_name"].tolist(),
             hovertemplate="<b>%{text}</b><br>True: %{x}<br>Measured: %{y:.3f}<extra></extra>"
         ))
 
     # 2. Draw Calibration Line
     t_min, t_max = anchor_data["d_true"].min(), anchor_data["d_true"].max()
     pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
-    t_line = np.linspace(t_min - pad, t_max + pad, 100)
+    t_line = np.linspace(t_min - pad, t_max + pad, 100).tolist() # Convert to list
     
     m = batch._strategy.slope
     b = batch._strategy.intercept
-    y_line = m * t_line + b
+    y_line = [float(m * t + b) for t in t_line] # Convert to list of floats
 
     fig.add_trace(go.Scatter(
         x=t_line,
@@ -169,10 +172,11 @@ def _create_calibration_plot(batch) -> str:
         yaxis_title=f"Measured {batch.config.target_column} (Drift-Corrected)",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=50, r=50, t=100, b=50),
-        hovermode="closest"
+        hovermode="closest",
+        plot_bgcolor="white"
     )
 
-    return pio.to_html(fig, full_html=False, include_plotlyjs=False)
+    return pio.to_html(fig, full_html=False, include_plotlyjs=False, post_script=None)
 
 def generate_html_report(batch, filepath: str):
     """
