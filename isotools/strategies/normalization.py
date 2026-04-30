@@ -5,8 +5,8 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
-from isotools.models import ReferenceMaterial
-from isotools.utils.kragten import propagate_kragten
+from ..models import ReferenceMaterial
+from ..utils.kragten import propagate_kragten
 from .abstract import CalibrationStrategy
 
 

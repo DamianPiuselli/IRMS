@@ -4,7 +4,7 @@ Utilities for reading IRMS data from external files (e.g., Isodat Excel).
 from typing import List, Optional
 import warnings
 import pandas as pd
-from isotools.config import SystemConfig
+from ..config import SystemConfig
 
 
 class IsodatReader:

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isotools"
+version = "0.1.0"
+description = "Automated processing, normalization, and uncertainty propagation of IRMS data"
+authors = [
+    {name = "DamianP"}
+]
+dependencies = [
+    "pandas>=1.3.0",
+    "numpy>=1.21.0",
+    "openpyxl>=3.0.0",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
+    "scipy>=1.7.0",
+    "plotly",
+    "jinja2"
+]
+requires-python = ">=3.9"
+
+[tool.setuptools]
+packages = ["isotools", "isotools.reporting", "isotools.strategies", "isotools.utils"]
+package-data = { "isotools.reporting" = ["templates/*.html"] }

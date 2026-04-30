@@ -4,7 +4,7 @@ Abstract base classes for calibration strategies.
 from abc import ABC, abstractmethod
 from typing import Dict
 import pandas as pd
-from isotools.models import ReferenceMaterial
+from ..models import ReferenceMaterial
 
 
 class CalibrationStrategy(ABC):
