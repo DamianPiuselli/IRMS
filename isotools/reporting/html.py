@@ -207,6 +207,8 @@ def generate_html_report(batch, filepath: str):
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "filepath": batch.filepath,
         "strategy_name": batch._strategy.__class__.__name__ if batch._strategy else "Not Processed",
+        "drift_correction_applied": batch.drift_correction_applied,
+        "drift_monitors_set": len(batch.drift_monitors) > 0,
         "alerts": alerts,
         "drift_plot_html": _create_drift_plot(batch),
         "cal_plot_html": _create_calibration_plot(batch),
