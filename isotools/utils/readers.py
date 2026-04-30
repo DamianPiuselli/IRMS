@@ -1,3 +1,6 @@
+"""
+Utilities for reading IRMS data from external files (e.g., Isodat Excel).
+"""
 from typing import List, Optional
 import warnings
 import pandas as pd
@@ -10,6 +13,12 @@ class IsodatReader:
     """
 
     def __init__(self, config: SystemConfig):
+        """
+        Initializes the reader with a system configuration.
+
+        Args:
+            config: SystemConfig defining the isotope system and column mapping.
+        """
         self.config = config
 
     def read(
@@ -19,13 +28,21 @@ class IsodatReader:
         exclude_rows: Optional[List[int]] = None,
     ) -> pd.DataFrame:
         """
-        Reads the file, renames columns, and filters rows based on config and user exclusions.
+        Reads the file, renames columns, and filters rows.
+
+        Args:
+            filepath: Path to the .xls or .xlsx file.
+            sheet_name: Sheet index or name.
+            exclude_rows: Optional list of row IDs to ignore.
+
+        Returns:
+            Cleaned and filtered pandas DataFrame.
         """
         # 1. Load Data
         try:
             df = pd.read_excel(filepath, sheet_name=sheet_name)
         except Exception as e:
-            raise IOError(f"Failed to read file {filepath}: {e}")
+            raise IOError(f"Failed to read file {filepath}: {e}") from e
 
         # 2. Clean Headers (Remove double spaces, strip whitespace)
         # Isodat often outputs "Ampl  28" with two spaces.
@@ -34,7 +51,7 @@ class IsodatReader:
         # 3. Validate Columns
         # We distinguish between 'Essential' (required for logic) and 'Optional' (contextual)
         essential_internal_names = ["sample_name", "row", "peak_nr", self.config.target_column]
-        
+
         missing_essential = []
         missing_optional = []
 
@@ -50,7 +67,7 @@ class IsodatReader:
                 f"Missing ESSENTIAL columns in '{filepath}': {missing_essential}. "
                 f"These are required for IRMS processing. Found columns: {list(df.columns)}"
             )
-        
+
         if missing_optional:
             warnings.warn(
                 f"Missing optional columns in '{filepath}': {missing_optional}. "

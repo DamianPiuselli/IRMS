@@ -1,3 +1,6 @@
+"""
+Numerical uncertainty propagation using the Kragten method.
+"""
 from typing import Callable, List, Tuple
 import numpy as np
 

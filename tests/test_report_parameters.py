@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pandas as pd
 import os
 from isotools.core import Batch
-from isotools.config import Water_H
+from isotools.config import WATER_H
 from isotools.strategies import TwoPointLinear
 
 @patch("isotools.core.get_standard")
@@ -25,7 +25,7 @@ def test_parameters_sheet_drift_info(mock_get_std, tmp_path):
     # We only mock read_excel for the Batch initialization
     with patch("isotools.utils.readers.pd.read_excel") as mock_read:
         mock_read.return_value = pd.DataFrame(data)
-        batch = Batch("dummy.xls", config=Water_H)
+        batch = Batch("dummy.xls", config=WATER_H)
     
     batch.set_anchors(["Mar_H", "Antartida_H"])
     batch.set_drift_monitors(["Mar_H"])

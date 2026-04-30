@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import os
 from isotools.core import Batch
-from isotools.config import Nitrogen
+from isotools.config import NITROGEN
 from isotools.strategies import TwoPointLinear
 
 # --- Fixtures ---
@@ -18,7 +18,7 @@ def mock_isodat_file():
     """Simulate reading a file with N2 data."""
     data = {
         "Identifier 1": ["USGS32", "USGS32", "USGS34", "USGS34", "Unknown"],
-        "Peak Nr": [2, 2, 2, 2, 2],  # Nitrogen keeps Peak 2
+        "Peak Nr": [2, 2, 2, 2, 2],  # NITROGEN keeps Peak 2
         "d 15N/14N": [180.0, 180.0, -1.8, -1.8, 50.0],  # Perfect data
         "Row": [1, 2, 3, 4, 5],
     }
@@ -33,7 +33,7 @@ def test_batch_workflow_integration(mock_read, mock_isodat_file):
     mock_read.return_value = mock_isodat_file
 
     # 1. Initialize
-    batch = Batch("dummy.xls", config=Nitrogen)
+    batch = Batch("dummy.xls", config=NITROGEN)
 
     # Verify data loaded and renamed (d 15N/14N -> d15n)
     assert "d15n" in batch.replicates.columns
@@ -64,7 +64,7 @@ def test_batch_outlier_exclusion(mock_read, mock_isodat_file):
     """Test that excluding a row removes it from calculations."""
     mock_read.return_value = mock_isodat_file
 
-    batch = Batch("dummy.xls", config=Nitrogen)
+    batch = Batch("dummy.xls", config=NITROGEN)
 
     # Exclude Row 5 (The Unknown sample)
     batch.exclude_rows([5])
@@ -87,7 +87,7 @@ def test_batch_plot_calibration(mock_read, mock_isodat_file):
     mock_read.return_value = mock_isodat_file
     import matplotlib.pyplot as plt
     
-    batch = Batch("dummy.xls", config=Nitrogen)
+    batch = Batch("dummy.xls", config=NITROGEN)
     
     # Error if called before process
     with pytest.raises(RuntimeError, match=r"Run .process\(\) before"):
@@ -103,7 +103,7 @@ def test_batch_plot_calibration(mock_read, mock_isodat_file):
 @patch("isotools.utils.readers.pd.read_excel")
 def test_batch_precision_override(mock_read):
     """Test that use_method_precision correctly overrides sample SEM."""
-    from isotools.config import Water_H
+    from isotools.config import WATER_H
     import numpy as np
     
     # 1. Setup data with perfect precision (all same values)
@@ -116,7 +116,7 @@ def test_batch_precision_override(mock_read):
     }
     mock_read.return_value = pd.DataFrame(data)
     
-    batch = Batch("dummy.xls", config=Water_H)
+    batch = Batch("dummy.xls", config=WATER_H)
     batch.set_anchors(["Mar_H", "Antartida_H"])
     
     # 2. Process with empirical SEM (which will be 0.0)
@@ -125,7 +125,7 @@ def test_batch_precision_override(mock_read):
     sem_empirical = batch._summary.loc["S1", "sem"]
     assert sem_empirical == 0.0
     
-    # 3. Process with method precision (Water_H precision = 1.4)
+    # 3. Process with method precision (WATER_H precision = 1.4)
     # For S1 with n=2, expected SEM = 1.4 / sqrt(2) = 0.9899
     batch.process(TwoPointLinear(), use_method_precision=True)
     unc_overridden = batch._summary.loc["S1", "combined_uncertainty"]
@@ -139,7 +139,7 @@ def test_batch_precision_override(mock_read):
 def test_batch_data_view(mock_read, mock_isodat_file):
     """Test that data_view returns the full replicates DataFrame."""
     mock_read.return_value = mock_isodat_file
-    batch = Batch("dummy.xls", config=Nitrogen)
+    batch = Batch("dummy.xls", config=NITROGEN)
     
     view = batch.data_view
     
@@ -158,7 +158,7 @@ def test_batch_data_view(mock_read, mock_isodat_file):
 @patch("isotools.utils.readers.pd.read_excel")
 def test_outlier_detection(mock_read):
     """Test that outliers are correctly identified."""
-    from isotools.config import Water_H
+    from isotools.config import WATER_H
     from isotools.strategies import TwoPointLinear
     
     # Setup data with:
@@ -174,7 +174,7 @@ def test_outlier_detection(mock_read):
     }
     mock_read.return_value = pd.DataFrame(data)
     
-    batch = Batch("dummy.xls", config=Water_H)
+    batch = Batch("dummy.xls", config=WATER_H)
     alerts = batch.alerts
     
     # 1. Variance check (immediate)
@@ -196,7 +196,7 @@ def test_outlier_detection(mock_read):
 def test_batch_save_report(mock_read, mock_isodat_file, tmp_path):
     """Test that save_report creates an Excel file."""
     mock_read.return_value = mock_isodat_file
-    batch = Batch("dummy.xls", config=Nitrogen)
+    batch = Batch("dummy.xls", config=NITROGEN)
     batch.set_anchors(["USGS32", "USGS34"])
     batch.process(TwoPointLinear())
 

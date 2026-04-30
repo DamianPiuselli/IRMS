@@ -1,4 +1,6 @@
-# isotools/models.py
+"""
+Data models for Reference Materials (standards).
+"""
 from dataclasses import dataclass, field
 from typing import List, Set
 
@@ -6,8 +8,10 @@ from typing import List, Set
 @dataclass
 class ReferenceMaterial:
     """
-    Immutable definition of a Reference Material.
-    Includes true values and valid aliases for matching against raw data.
+    Representation of a Reference Material (standard).
+
+    Includes true values, certified uncertainty, and valid aliases for matching
+    against raw Isodat data.
     """
 
     name: str

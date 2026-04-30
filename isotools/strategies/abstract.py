@@ -1,3 +1,6 @@
+"""
+Abstract base classes for calibration strategies.
+"""
 from abc import ABC, abstractmethod
 from typing import Dict
 import pandas as pd
@@ -7,7 +10,13 @@ from isotools.models import ReferenceMaterial
 class CalibrationStrategy(ABC):
     """
     Abstract base class for calibration logic.
+
+    Defines the interface for fitting, applying, and propagating uncertainty.
     """
+
+    def __init__(self):
+        self.slope = 1.0
+        self.intercept = 0.0
 
     @abstractmethod
     def fit(self, anchor_stats: pd.DataFrame, refs: Dict[str, ReferenceMaterial]):
@@ -23,12 +32,22 @@ class CalibrationStrategy(ABC):
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         """
         Applies the calibration to the 'Row-Level' data (vectorized).
+
         Adds a 'corrected_<target_col>' column.
+
+        Args:
+            df: Input DataFrame.
+            target_col: Name of the column to correct.
         """
 
     @abstractmethod
     def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         """
         Applies Kragten propagation to the 'Sample-Level' aggregated data.
+
         Returns DataFrame with 'combined_uncertainty'.
+
+        Args:
+            summary_df: Aggregated sample stats.
+            target_col: Name of the original target column.
         """

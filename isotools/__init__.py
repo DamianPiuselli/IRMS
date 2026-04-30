@@ -12,7 +12,7 @@ from .models import ReferenceMaterial
 
 # 3. Configurations
 # Pre-defined system setups.
-from .config import SystemConfig, Nitrogen, Water_H, Water_O
+from .config import SystemConfig, NITROGEN, WATER_H, WATER_O
 
 # 4. Standards
 # The database of known reference materials.
@@ -32,9 +32,9 @@ __all__ = [
     "Batch",
     "ReferenceMaterial",
     "SystemConfig",
-    "Nitrogen",
-    "Water_H",
-    "Water_O",
+    "NITROGEN",
+    "WATER_H",
+    "WATER_O",
     "USGS32",
     "USGS34",
     "USGS35",

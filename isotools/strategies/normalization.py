@@ -1,6 +1,10 @@
+"""
+Standard normalization strategies for IRMS data.
+"""
+from typing import Dict
 import numpy as np
-from typing import Dict, List
 import pandas as pd
+
 from isotools.models import ReferenceMaterial
 from isotools.utils.kragten import propagate_kragten
 from .abstract import CalibrationStrategy
@@ -9,11 +13,13 @@ from .abstract import CalibrationStrategy
 class TwoPointLinear(CalibrationStrategy):
     """
     Standard 2-Point Linear Normalization.
+
     Equation: y = mx + b
     Slope (m) = (T2 - T1) / (R2 - R1)
     """
 
     def __init__(self):
+        super().__init__()
         # State to store fitted parameters and their uncertainties
         self.r1 = 0.0
         self.u_r1 = 0.0  # Raw Std 1
@@ -24,11 +30,14 @@ class TwoPointLinear(CalibrationStrategy):
         self.t2 = 0.0
         self.u_t2 = 0.0  # True Std 2
 
-        # Computed slope/intercept for fast vectorized application
-        self.slope = 1.0
-        self.intercept = 0.0
-
     def fit(self, anchor_stats: pd.DataFrame, refs: Dict[str, ReferenceMaterial]):
+        """
+        Fits the 2-point linear model.
+
+        Args:
+            anchor_stats: Summary stats for anchors.
+            refs: Dictionary of ReferenceMaterial objects.
+        """
         if len(anchor_stats) != 2:
             raise ValueError(
                 f"TwoPointLinear requires exactly 2 anchor standards. Found {len(anchor_stats)}."
@@ -57,7 +66,13 @@ class TwoPointLinear(CalibrationStrategy):
         self.intercept = self.r1 - (self.slope * self.t1)
 
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
-        """Vectorized correction for raw data visualization."""
+        """
+        Vectorized correction for raw data visualization.
+
+        Args:
+            df: Input DataFrame.
+            target_col: Name of the column to correct.
+        """
         df = df.copy()
         # Rearranged from Raw = m * True + b -> True = (Raw - b) / m
         df[f"corrected_{target_col}"] = (df[target_col] - self.intercept) / self.slope
@@ -66,6 +81,10 @@ class TwoPointLinear(CalibrationStrategy):
     def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         """
         Runs Kragten propagation for every sample in the summary table.
+
+        Args:
+            summary_df: Aggregated sample stats.
+            target_col: Name of the original target column.
         """
         results = []
 
@@ -74,7 +93,7 @@ class TwoPointLinear(CalibrationStrategy):
         curve_params = [self.r1, self.r2, self.t1, self.t2]
         curve_uncs = [self.u_r1, self.u_r2, self.u_t1, self.u_t2]
 
-        for idx, row in summary_df.iterrows():
+        for _, row in summary_df.iterrows():
             r_samp = row["mean"]
             u_samp = row["sem"]
 
@@ -110,15 +129,22 @@ class TwoPointLinear(CalibrationStrategy):
 class MultiPointLinear(CalibrationStrategy):
     """
     Multi-Point Linear Normalization using Ordinary Least Squares (OLS).
+
     Useful when 3+ anchor standards are used.
     """
 
     def __init__(self):
+        super().__init__()
         self.anchors_data = []  # List of dicts with raw_mean, raw_sem, true_val, true_unc
-        self.slope = 1.0
-        self.intercept = 0.0
 
     def fit(self, anchor_stats: pd.DataFrame, refs: Dict[str, ReferenceMaterial]):
+        """
+        Fits the multi-point linear model using OLS.
+
+        Args:
+            anchor_stats: Summary stats for anchors.
+            refs: Dictionary of ReferenceMaterial objects.
+        """
         self.anchors_data = []
         x_raw = []
         y_true = []
@@ -148,12 +174,26 @@ class MultiPointLinear(CalibrationStrategy):
         self.slope, self.intercept = np.polyfit(y_true, x_raw, 1)
 
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
+        """
+        Vectorized correction for raw data visualization.
+
+        Args:
+            df: Input DataFrame.
+            target_col: Name of the column to correct.
+        """
         df = df.copy()
         # True = (Raw - b) / m
         df[f"corrected_{target_col}"] = (df[target_col] - self.intercept) / self.slope
         return df
 
     def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
+        """
+        Runs Kragten propagation for every sample in the summary table.
+
+        Args:
+            summary_df: Aggregated sample stats.
+            target_col: Name of the original target column.
+        """
         results = []
 
         # Parameters for Kragten: [R_samp, R1, T1, R2, T2, ..., Rn, Tn]
@@ -173,7 +213,7 @@ class MultiPointLinear(CalibrationStrategy):
             m, b = np.polyfit(y_true_anchors, x_raw_anchors, 1)
             return (r_s - b) / m
 
-        for idx, row in summary_df.iterrows():
+        for _, row in summary_df.iterrows():
             r_samp = row["mean"]
             u_samp = row["sem"]
 

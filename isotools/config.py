@@ -1,3 +1,6 @@
+"""
+Configuration module for isotope systems and their specific processing rules.
+"""
 from dataclasses import dataclass, field
 from typing import Dict, Callable
 import pandas as pd
@@ -86,7 +89,7 @@ WATER_O_MAPPING = {
 }
 
 # The public objects
-Nitrogen = SystemConfig(
+NITROGEN = SystemConfig(
     name="Nitrogen (N2)",
     target_column="d15n",
     column_mapping=NITROGEN_MAPPING,
@@ -95,7 +98,7 @@ Nitrogen = SystemConfig(
     absolute_range=(-20.0, 50.0),
 )
 
-Water_H = SystemConfig(
+WATER_H = SystemConfig(
     name="Water (2H)",
     target_column="d2h",
     column_mapping=WATER_H_MAPPING,
@@ -105,7 +108,7 @@ Water_H = SystemConfig(
     absolute_range=(-400.0, 50.0), #rango maximo en muestras naturales
 )
 
-Water_O = SystemConfig(
+WATER_O = SystemConfig(
     name="Water (18O)",
     target_column="d18o",
     column_mapping=WATER_O_MAPPING,

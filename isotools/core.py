@@ -1,10 +1,15 @@
-from typing import List, Dict, Optional, Iterable
+"""
+Core processing logic for IRMS data batches.
+"""
 import warnings
-import pandas as pd
+from typing import List, Dict, Optional
+
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy import stats
+from scipy import stats as sp_stats
+
 from .config import SystemConfig
 from .utils.readers import IsodatReader
 from .models import ReferenceMaterial
@@ -15,10 +20,19 @@ from .strategies.abstract import CalibrationStrategy
 class Batch:
     """
     The central object representing a single IRMS run/sequence.
+
     Manages the lifecycle of data from Raw -> Cleaned -> Calibrated -> Reported.
     """
 
     def __init__(self, filepath: str, config: SystemConfig, sheet_name: int | str = 0):
+        """
+        Initializes a new Batch from an Isodat file.
+
+        Args:
+            filepath: Path to the .xls or .xlsx Isodat file.
+            config: SystemConfig defining the isotope system.
+            sheet_name: Name or index of the Excel sheet to read.
+        """
         self.config = config
         self.filepath = filepath
 
@@ -27,7 +41,7 @@ class Batch:
         reader = IsodatReader(config)
         self.replicates = reader.read(filepath, sheet_name=sheet_name)
         self.replicates["excluded"] = False
-        
+
         # Initialize working_value as a copy of the raw target
         self.replicates["working_value"] = self.replicates[config.target_column].copy()
 
@@ -62,6 +76,7 @@ class Batch:
     def detect_outliers(self):
         """
         Runs automatic diagnostics to identify suspicious data points.
+
         1. Range Check: Outside expected environmental values (on normalized data).
         2. Precision Check: Sample SD > 3x method precision (on raw/drift-corrected data).
         3. Amplitude Check: Amplitude < 50% or > 200% of run median.
@@ -76,7 +91,7 @@ class Batch:
         # --- 1. Range Check (Normalized only) ---
         target_col = self.config.target_column
         norm_col = f"corrected_{target_col}"
-        
+
         if norm_col in valid.columns:
             r_min, r_max = self.config.absolute_range
             out_of_range = valid[
@@ -95,12 +110,12 @@ class Batch:
         if self.config.method_precision > 0:
             threshold = 3 * self.config.method_precision
             # Calculate STD per sample
-            stats = valid.groupby("sample_name")["working_value"].std().reset_index()
-            flagged_samples = stats[stats["working_value"] > threshold]["sample_name"]
-            
+            precision_stats = valid.groupby("sample_name")["working_value"].std().reset_index()
+            flagged_samples = precision_stats[precision_stats["working_value"] > threshold]["sample_name"]
+
             for name in flagged_samples:
                 sample_rows = valid[valid["sample_name"] == name]
-                val_std = stats[stats["sample_name"] == name]["working_value"].values[0]
+                val_std = precision_stats[precision_stats["sample_name"] == name]["working_value"].values[0]
                 for _, row in sample_rows.iterrows():
                     alerts.append(
                         {
@@ -136,6 +151,9 @@ class Batch:
     def exclude_rows(self, row_ids: List[int]):
         """
         Manually excludes specific rows (by Isodat Row number) from processing.
+
+        Args:
+            row_ids: List of 'row' numbers to exclude.
         """
         if "row" in self.replicates.columns:
             mask = self.replicates["row"].isin(row_ids)
@@ -175,7 +193,7 @@ class Batch:
         self, raw_name: str, registry: Dict[str, ReferenceMaterial]
     ) -> Optional[str]:
         """
-        Maps a potentially messy raw sample name to a canonical standard name 
+        Maps a potentially messy raw sample name to a canonical standard name
         if it matches any aliases in the provided registry.
         """
         for std in registry.values():
@@ -188,18 +206,19 @@ class Batch:
     def check_drift(self, use_working: bool = False) -> pd.DataFrame:
         """
         Calculates linear regression (Target vs Row) for all drift monitors.
+
         Returns a summary of slopes, p-values, and 95% Confidence Intervals.
-        
+
         Args:
-            use_working: If True, uses the current 'working_value' (which might be 
-                        already drift-corrected). If False (default), uses the 
+            use_working: If True, uses the current 'working_value' (which might be
+                        already drift-corrected). If False (default), uses the
                         original raw target column.
         """
         if not self.drift_monitors:
             raise ValueError("No drift monitors set. Use set_drift_monitors() first.")
 
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
-        
+
         # Add canonical name for grouping
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self._get_canonical_name(x, self.drift_monitors)
@@ -212,17 +231,17 @@ class Batch:
         for name, group in drift_data.groupby("canonical_name"):
             if len(group) < 3:
                 continue
-            
+
             x = group["row"]
             y = group[col_to_use]
-            
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
-            
+
+            slope, _, r_value, p_value, std_err = sp_stats.linregress(x, y)
+
             # 95% CI for the slope: slope +/- t_crit * std_err
             df_deg = len(x) - 2
-            t_crit = stats.t.ppf(0.975, df_deg)
+            t_crit = sp_stats.t.ppf(0.975, df_deg)
             ci_95 = t_crit * std_err
-            
+
             results.append({
                 "Standard": name,
                 "Slope": slope,
@@ -245,7 +264,7 @@ class Batch:
             raise ValueError("No drift monitors set. Use set_drift_monitors() first.")
 
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
-        
+
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self._get_canonical_name(x, self.drift_monitors)
         )
@@ -255,7 +274,7 @@ class Batch:
             raise ValueError("No data found matching the registered drift monitors.")
 
         if ax is None:
-            fig, ax = plt.subplots(figsize=(10, 6))
+            _, ax = plt.subplots(figsize=(10, 6))
 
         col_to_use = "working_value" if use_working else self.config.target_column
 
@@ -266,12 +285,12 @@ class Batch:
             scatter_kws={"alpha": 0.6},
             ax=ax
         )
-        
+
         # Add labels and formatting
         ax.set_title(f"Drift Analysis ({self.config.name})")
         ax.set_xlabel("Injection (Row)")
         ax.set_ylabel(f"{'Working' if use_working else 'Raw'} {self.config.target_column}")
-        
+
         # Calculate stats for annotation
         stats_df = self.check_drift(use_working=use_working)
         for i, (name, row) in enumerate(stats_df.iterrows()):
@@ -287,19 +306,19 @@ class Batch:
         Formula: working_value = raw_value - (slope * row)
         """
         # Always check drift on raw data to get the absolute slope
-        stats = self.check_drift(use_working=False)
-        
+        drift_stats = self.check_drift(use_working=False)
+
         # Check if monitor_name is canonical or raw
-        if monitor_name not in stats.index:
+        if monitor_name not in drift_stats.index:
             monitor_name = self._get_canonical_name(monitor_name, self.drift_monitors)
-            
-            if monitor_name not in stats.index:
+
+            if monitor_name not in drift_stats.index:
                 raise ValueError(
                     f"Monitor standard '{monitor_name}' not found or has insufficient data for drift analysis."
                 )
 
-        slope = stats.loc[monitor_name, "Slope"]
-        
+        slope = drift_stats.loc[monitor_name, "Slope"]
+
         # Apply correction to working_value, starting from raw target
         self.replicates["working_value"] = self.replicates[self.config.target_column] - (slope * self.replicates["row"])
 
@@ -309,22 +328,23 @@ class Batch:
 
         # Invalidate summary cache
         self._summary = None
+
     def plot_calibration(self, ax: Optional[plt.Axes] = None):
         """
-        Plots the calibration curve showing all individual anchor replicates 
+        Plots the calibration curve showing all individual anchor replicates
         and the fitted calibration line.
         """
         if self._strategy is None:
             raise RuntimeError("Run .process() before requesting calibration plot.")
 
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
-        
+
         # 1. Filter for Anchors and add True Values
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self._get_canonical_name(x, self.anchors)
         )
         anchor_data = valid_data[valid_data["canonical_name"].notna()]
-        
+
         def get_true_val(canonical_name):
             return self.anchors[canonical_name].d_true
 
@@ -334,7 +354,7 @@ class Batch:
             raise ValueError("No anchors found in data to plot.")
 
         if ax is None:
-            fig, ax = plt.subplots(figsize=(8, 6))
+            _, ax = plt.subplots(figsize=(8, 6))
 
         # 2. Scatter Individual Replicates (True on X, Measured on Y)
         sns.scatterplot(
@@ -354,15 +374,15 @@ class Batch:
         # Add some padding
         pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
         t_line = np.linspace(t_min - pad, t_max + pad, 100)
-        
+
         # Raw = m * True + b
         y_line = (t_line * self._strategy.slope) + self._strategy.intercept
-        
+
         ax.plot(
-            t_line, 
-            y_line, 
-            color='black', 
-            linestyle='--', 
+            t_line,
+            y_line,
+            color='black',
+            linestyle='--',
             label='Calibration Line',
             zorder=2
         )
@@ -380,6 +400,7 @@ class Batch:
     def process(self, strategy: CalibrationStrategy, use_method_precision: bool = False):
         """
         The Main Pipeline:
+
         1. Run Diagnostics (Detect Outliers)
         2. Prepare Anchor Stats for fitting
         3. Fit Strategy (using Anchors from working_value)
@@ -433,16 +454,16 @@ class Batch:
             self.replicates = self.replicates.drop(columns=[norm_col])
 
         self.replicates = strategy.apply(self.replicates, "working_value")
-        
+
         # Rename the output column to match the expected client-facing name
         self.replicates = self.replicates.rename(
-            columns={f"corrected_working_value": norm_col}
+            columns={"corrected_working_value": norm_col}
         )
 
         # F. Aggregate to Summary (Sample Level)
         # We group by canonical name for standards, but keep raw names for unknowns
         summary_data = self.replicates[~self.replicates["excluded"]].copy()
-        
+
         def get_group_name(raw_name):
             # Check Anchors first
             can_name = self._get_canonical_name(raw_name, self.anchors)
@@ -456,7 +477,7 @@ class Batch:
             return raw_name
 
         summary_data["group_name"] = summary_data["sample_name"].apply(get_group_name)
-        
+
         self._summary = summary_data.groupby("group_name")[
             "working_value"
         ].agg(["mean", "sem", "count"])
@@ -475,7 +496,7 @@ class Batch:
         self.detect_outliers()
         if not self._alerts.empty:
             warnings.warn(
-                f"Detected {len(self._alerts)} suspicious data points after processing. "
+                "Detected suspicious data points after processing. "
                 "Check the .alerts property for details."
             )
 

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import matplotlib.pyplot as plt
 from isotools.core import Batch
-from isotools.config import Water_H
+from isotools.config import WATER_H
 
 @pytest.fixture
 def drift_data():
@@ -30,7 +30,7 @@ def test_drift_calculation(mock_read, drift_data):
         BA = ReferenceMaterial(name="Buenos Aires", d_true=-40.0, u_true=0.5, aliases=["buenos aires"])
         mock_get_std.side_effect = lambda name: BA if name.lower() == "buenos aires" else None
         
-        batch = Batch("dummy.xls", config=Water_H)
+        batch = Batch("dummy.xls", config=WATER_H)
         batch.set_drift_monitors(["Buenos Aires"])
         
         stats = batch.check_drift()
@@ -50,7 +50,7 @@ def test_drift_plot(mock_read, drift_data):
         BA = ReferenceMaterial(name="Buenos Aires", d_true=-40.0, u_true=0.5)
         mock_get_std.return_value = BA
         
-        batch = Batch("dummy.xls", config=Water_H)
+        batch = Batch("dummy.xls", config=WATER_H)
         batch.set_drift_monitors(["Buenos Aires"])
         
         ax = batch.plot_drift()
@@ -65,7 +65,7 @@ def test_apply_drift_correction(mock_read, drift_data):
         BA = ReferenceMaterial(name="Buenos Aires", d_true=-40.0, u_true=0.5)
         mock_get_std.return_value = BA
         
-        batch = Batch("dummy.xls", config=Water_H)
+        batch = Batch("dummy.xls", config=WATER_H)
         batch.set_drift_monitors(["Buenos Aires"])
         
         # Verify initial drift
@@ -91,7 +91,7 @@ def test_drift_tracking_attributes(mock_read, drift_data):
         BA = ReferenceMaterial(name="Buenos Aires", d_true=-40.0, u_true=0.5)
         mock_get_std.return_value = BA
         
-        batch = Batch("dummy.xls", config=Water_H)
+        batch = Batch("dummy.xls", config=WATER_H)
         
         # Initial state
         assert batch.drift_correction_applied is False
@@ -107,6 +107,6 @@ def test_drift_tracking_attributes(mock_read, drift_data):
 def test_drift_no_monitors():
     with patch("isotools.utils.readers.pd.read_excel") as mock_read:
         mock_read.return_value = pd.DataFrame({"Identifier 1": ["S1"], "Peak Nr": [3], "d 3H2/2H2": [0], "Row": [1]})
-        batch = Batch("dummy.xls", config=Water_H)
+        batch = Batch("dummy.xls", config=WATER_H)
         with pytest.raises(ValueError, match="No drift monitors set"):
             batch.check_drift()

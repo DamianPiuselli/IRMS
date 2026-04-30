@@ -1,4 +1,6 @@
-# isotools/standards.py
+"""
+Registry of common Reference Materials (standards) used in IRMS.
+"""
 from .models import ReferenceMaterial
 
 # --- Nitrogen Standards ---
